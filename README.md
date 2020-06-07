@@ -5,6 +5,40 @@ A short and sweet single header file C++ dynamic array type done in a Plain Old 
 
 `array_view_t` is a partial 'view' of a chunk of memory that contains much more than just what we're interested in. For example, if we want to interact with only the 'y' component of an array of vec3s. It also has tools for de-interlacing data from such chunks of memory. While `array_t` should be better for most use cases, this is particularly handy for data you don't know the whole story about, or when loading data from files!
 
+## API
+
+- `array_t<T>`
+  - `void  *data`
+  - `size_t count`
+  - `size_t capacity`
+  -
+  - `size_t add         (const T &item)`
+  - `void   insert      (size_t at, const T &item)`
+  - `void   resize      (size_t to_capacity)`
+  - `void   remove      (size_t at)`
+  - `void   pop         ()`
+  - `void   clear       ()`
+  - `T     &last        () const`
+  - `T     &get         (size_t id) const`
+  - `void  &set         (size_t id, const T &val)`
+  - `T     &operator[]  (size_t id)`
+  - `void       reverse ()`
+  - `array_t<T> copy    () const`
+  - `void       each    (void (*e)(T &))`
+- `array_view_t<T>`
+  -	`void  *data`
+  - `size_t count`
+  - `size_t stride`
+  - `size_t offset`
+  -
+  - `T     &last           () const`
+  - `T     &get            (size_t id) const`
+  - `void  &set            (size_t id, const T &val)`
+  - `T     &operator[]     (size_t id)`
+  - `T    *copy_deinterlace() const`
+  - `void  each            (void (*e)(T &))`
+
+
 ## Example usage
 
 ```C
