@@ -97,9 +97,9 @@ struct array_t {
 	void       insert(size_t at, const T &item);
 	void       reverse();
 
-	inline void set        (size_t id, T &val) { ((T*)data)[id] = val; }
-	inline T   &get        (size_t id) const   { return ((T*)data)[id]; }
-	inline T   &operator[] (size_t id) const   { return ((T*)data)[id]; }
+	inline void set        (size_t id, const T &val) { ((T*)data)[id] = val; }
+	inline T   &get        (size_t id) const         { return ((T*)data)[id]; }
+	inline T   &operator[] (size_t id) const         { return ((T*)data)[id]; }
 };
 
 //////////////////////////////////////
@@ -118,9 +118,9 @@ struct array_view_t {
 	T   &last()             const  { return (T&)((uint8_t*)data + (count-1)*stride + offset); }
 	T   *copy_deinterlace() const;
 
-	inline void set        (size_t id, T &val) { *(T*)((uint8_t*)data + id*stride + offset) = val; }
-	inline T   &get        (size_t id) const   { return (T&)((uint8_t*)data + id*stride + offset); }
-	inline T   &operator[] (size_t id) const   { return (T&)((uint8_t*)data + id*stride + offset); }
+	inline void set        (size_t id, const T &val) { *(T*)((uint8_t*)data + id*stride + offset) = val; }
+	inline T   &get        (size_t id) const         { return (T&)((uint8_t*)data + id*stride + offset); }
+	inline T   &operator[] (size_t id) const         { return (T&)((uint8_t*)data + id*stride + offset); }
 };
 
 //////////////////////////////////////
