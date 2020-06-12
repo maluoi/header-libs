@@ -1,52 +1,79 @@
-// Licensed under MIT or Public Domain. See bottom of file for details.
-//
-// array.h is a dynamic array implementation using Plain Old Data structs. 
-//
-// array_t handles memory allocation and resizing, but follows standard and
-// predictable behavior during argument passing, construction, etc. Memory 
-// must be freed explicity with .free(), as it doesn't use constructors or 
-// destructors.
-//
-// array_view_t is a partial 'view' of a chunk of memory that contains much 
-// more than just what we're interested in. For example, if we want to 
-// interact with only the 'y' component of an array of vec3s. It also has 
-// tools for de-interlacing data from such chunks of memory. While array_t 
-// should be better for most use cases, this is particularly handy for data 
-// you don't know the whole story about, or when loading data from files.
+/*Licensed under MIT or Public Domain. See bottom of file for details.
 
-// Notes: array.h uses size_t instead of int32_t for performance. It 
-// eliminates at least one ASM instruction in access and set code.
+array.h
 
-// Example usage:
-/*
+	array.h is a dynamic array implementation using Plain Old Data structs. 
 
-array_t<vec3> vertices = {};
-vertices.resize(3); // resize is optional
+	array_t handles memory allocation and resizing, but follows standard and
+	predictable behavior during argument passing, construction, etc. Memory 
+	must be freed explicity with .free(), as it doesn't use constructors or 
+	destructors.
 
-vertices.add( vec3{1,0,0} );
-vertices.add( vec3{0,1,0} );
-vertices.add( vec3{0,0,1} );
+	array_view_t is a partial 'view' of a chunk of memory that contains much 
+	more than just what we're interested in. For example, if we want to 
+	interact with only the 'y' component of an array of vec3s. It also has 
+	tools for de-interlacing data from such chunks of memory. While array_t 
+	should be better for most use cases, this is particularly handy for data 
+	you don't know the whole story about, or when loading data from files.
 
-for (size_t i=0; i<vertices.count; i+=1) {
-	vertices[i] += vec3{1,1,1};
-}
+	Notes: array.h uses size_t instead of int32_t for performance. It 
+	eliminates at least one ASM instruction in access and set code.
 
-array_view_t<float> heights = array_view_create(vertices, &vec3::y);
-for (size_t i=0; i<heights.count; i+=1) {
-	heights[i] = 10;
-}
-float *arr_heights = heights.copy_deinterlace();
-free(arr_heights);
+Example usage:
 
-heights = {};
+	array_t<vec3> vertices = {};
+	vertices.resize(3); // resize is optional
 
-vertices.free();
+	vertices.add( vec3{1,0,0} );
+	vertices.add( vec3{0,1,0} );
+	vertices.add( vec3{0,0,1} );
+
+	// Sort in ascending order using the y component
+	vertices.sort<vec3, float, &vec3::y>();
+
+	// Binary search y components for 0.5, binary_search only works on sorted
+	// lists.
+	int32_t at = vertices.binary_search(&vec3::y, 0.5f);
+
+	// If result is positive, it's the index of the item. If negative, then
+	// the '~' operator gives you the insert index for that value.
+	if (at < 0) at = ~at;
+	vertices.insert(at, vec3{0, 0.5f, 0});
+
+	// standard array access
+	for (size_t i=0; i<vertices.count; i+=1) {
+		vertices[i] += vec3{1,1,1};
+	}
+
+	// or with a callback
+	vertices.each([](vec3 &v){ v += vec3{1,1,1}; });
+
+	// Array views allow you to work with just a single component as if it
+	// was an array of its own.
+	array_view_t<float> heights = array_view_create(vertices, &vec3::y);
+	for (size_t i=0; i<heights.count; i+=1) {
+		heights[i] = 10;
+	}
+
+	// copy_deinterlace will separate out the components into their very own
+	// chunk of memory.
+	float *arr_heights = heights.copy_deinterlace();
+	// Which you will have to free
+	free(arr_heights);
+
+	// Array views don't need freed, since they're just a view on some other
+	// array.
+	heights = {};
+
+	// No deconstructors here, you just have to remember to free it.
+	vertices.free();
 
 */
 
 #pragma once
 
 #include <stdint.h>
+#include <stdlib.h>
 
 //////////////////////////////////////
 
@@ -76,33 +103,6 @@ vertices.free();
 #endif
 
 //////////////////////////////////////
-// array_t                          //
-//////////////////////////////////////
-
-template <typename T>
-struct array_t {
-	void  *data;
-	size_t count;
-	size_t capacity;
-
-	size_t     add(const T &item)        { if (count+1 >= capacity) { resize(capacity * 2 < 4 ? 4 : capacity * 2); } ((T*)data)[count] = item; count += 1; return count - 1; }
-	void       clear()                   { count = 0; }
-	void       each(void (*e)(T &))      { for (size_t i=0; i<count; i++) e(((T*)data)[i]); }
-	T         &last() const              { return ((T*)data)[count - 1]; }
-	void       pop()                     { remove(count - 1); }
-	void       resize(size_t to_capacity);
-	void       free();
-	array_t<T> copy() const;
-	void       remove(size_t at);
-	void       insert(size_t at, const T &item);
-	void       reverse();
-
-	inline void set        (size_t id, const T &val) { ((T*)data)[id] = val; }
-	inline T   &get        (size_t id) const         { return ((T*)data)[id]; }
-	inline T   &operator[] (size_t id) const         { return ((T*)data)[id]; }
-};
-
-//////////////////////////////////////
 // array_view_t                     //
 //////////////////////////////////////
 
@@ -119,12 +119,95 @@ struct array_view_t {
 	T   *copy_deinterlace() const;
 
 	inline void set        (size_t id, const T &val) { *(T*)((uint8_t*)data + id*stride + offset) = val; }
-	inline T   &get        (size_t id) const         { return (T&)((uint8_t*)data + id*stride + offset); }
-	inline T   &operator[] (size_t id) const         { return (T&)((uint8_t*)data + id*stride + offset); }
+	inline T   &get        (size_t id) const         { return ((T*)((uint8_t*)data + id*stride + offset))[0]; }
+	inline T   &operator[] (size_t id) const         { return ((T*)((uint8_t*)data + id*stride + offset))[0]; }
+};
+
+//////////////////////////////////////
+// array_t                          //
+//////////////////////////////////////
+
+template <typename T>
+struct array_t {
+	void  *data;
+	size_t count;
+	size_t capacity;
+
+	size_t      add        (const T &item)           { if (count+1 > capacity) { resize(capacity * 2 < 4 ? 4 : capacity * 2); } ((T*)data)[count] = item; count += 1; return count - 1; }
+	void        insert     (size_t at, const T &item);
+	void        resize     (size_t to_capacity);
+	void        trim       ()                        { resize(count); }
+	void        remove     (size_t at);
+	void        pop        ()                        { remove(count - 1); }
+	void        clear      ()                        { count = 0; }
+	T          &last       () const                  { return ((T*)data)[count - 1]; }
+	inline void set        (size_t id, const T &val) { ((T*)data)[id] = val; }
+	inline T   &get        (size_t id) const         { return ((T*)data)[id]; }
+	inline T   &operator[] (size_t id) const         { return ((T*)data)[id]; }
+	void        reverse    ();
+	array_t<T>  copy       () const;
+	void        each       (void (*e)(T &))          { for (size_t i=0; i<count; i++) e(((T*)data)[i]); }
+	void        free       ();
+	
+	//////////////////////////////////////
+	// Binary search methods
+
+	int64_t binary_search(const T &item);
+
+	// Extra template parameters mean this needs completely defined right here
+	template <typename T, typename D>
+	int64_t binary_search(D T::*key, const D &item) {
+		array_view_t<D> view = array_view_create(*this, key);
+		int64_t l = 0, r = view.count - 1;
+		while (l <= r) {
+			int64_t mid = (l+r) / 2;
+			if      (view[mid] < item) l = mid + 1;
+			else if (view[mid] > item) r = mid - 1;
+			else                       return mid;
+		}
+		return r < 0 ? r : -(r+2);
+	}
+
+	//////////////////////////////////////
+	// Sort methods
+
+	void sort     (int32_t (*compare)(const T&a, const T&b)) { qsort(data, count, sizeof(T), (_CoreCrtNonSecureSearchSortCompareFunction)compare); }
+	void sort     ()                                         { qsort(data, count, sizeof(T), [](const void *a, const void *b) {T fa = *(T*)a, fb = *(T*)b; return (int32_t)((fa > fb) - (fa < fb));}); }
+	void sort_desc()                                         { qsort(data, count, sizeof(T), [](const void *a, const void *b) {T fa = *(T*)a, fb = *(T*)b; return (int32_t)((fa < fb) - (fa > fb));}); }
+
+	template <typename T, typename D, D T::*key>
+	void sort()  {
+		qsort((uint8_t*)data, count, sizeof(T), [](const void *a, const void *b) { 
+			size_t offset = (size_t)&((T*)0->*key); // would love for a way to constexpr this
+			D fa = *(D*)((uint8_t*)a + offset), fb = *(D*)((uint8_t*)b + offset); return (int32_t)((fa > fb) - (fa < fb)); 
+		}); 
+	}
+
+	template <typename T, typename D, D T::*key>
+	void sort_desc()  {
+		qsort((uint8_t*)data, count, sizeof(T), [](const void *a, const void *b) { 
+			size_t offset = (size_t)&((T*)0->*key); // would love for a way to constexpr this
+			D fa = *(D*)((uint8_t*)a + offset), fb = *(D*)((uint8_t*)b + offset); return (int32_t)((fa < fb) - (fa > fb)); 
+		}); 
+	}
 };
 
 //////////////////////////////////////
 // array_t methods                  //
+//////////////////////////////////////
+
+template <typename T>
+int64_t array_t<T>::binary_search(const T &item) {
+	int64_t l = 0, r = count - 1;
+	while (l <= r) {
+		int64_t mid = (l+r) / 2;
+		if      (get(mid) < item) l = mid + 1;
+		else if (get(mid) > item) r = mid - 1;
+		else                      return mid;
+	}
+	return r < 0 ? r : -(r+2);
+}
+
 //////////////////////////////////////
 
 template <typename T>
@@ -206,17 +289,17 @@ void array_t<T>::reverse() {
 // array_view_t methods             //
 //////////////////////////////////////
 
-template <typename T, typename D>
-inline static array_view_t<T> array_view_create(const D *data, size_t count, T D::*offset) {
-	return array_view_t<T>{data, count, sizeof(D), offset};
+template <typename D, typename T>
+inline static array_view_t<D> array_view_create(const T *data, size_t count, D T::*key) {
+	return array_view_t<D>{data, count, sizeof(T), (size_t)&((T*)nullptr->*key)};
 }
 
 //////////////////////////////////////
 
 // can be called like this: array_view_create(arr_of_vec3, &vec3::x);
-template <typename T, typename D>
-inline static array_view_t<T> array_view_create(const array_t<T> &src, T D::*offset) {
-	return array_view_t<T>{src.data, src.count, sizeof(D), offset};
+template <typename D, typename T>
+inline static array_view_t<D> array_view_create(const array_t<T> &src, D T::*key) {
+	return array_view_t<D>{src.data, src.count, sizeof(T), (size_t)&((T*)nullptr->*key)};
 }
 
 //////////////////////////////////////
