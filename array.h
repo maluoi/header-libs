@@ -129,35 +129,35 @@ struct array_view_t {
 
 template <typename T>
 struct array_t {
-	void  *data;
+	T     *data;
 	size_t count;
 	size_t capacity;
 
-	size_t      add        (const T &item)           { if (count+1 > capacity) { resize(capacity * 2 < 4 ? 4 : capacity * 2); } ((T*)data)[count] = item; count += 1; return count - 1; }
+	size_t      add        (const T &item)           { if (count+1 > capacity) { resize(capacity * 2 < 4 ? 4 : capacity * 2); } data[count] = item; count += 1; return count - 1; }
 	void        insert     (size_t at, const T &item);
 	void        resize     (size_t to_capacity);
 	void        trim       ()                        { resize(count); }
 	void        remove     (size_t at);
 	void        pop        ()                        { remove(count - 1); }
 	void        clear      ()                        { count = 0; }
-	T          &last       () const                  { return ((T*)data)[count - 1]; }
-	inline void set        (size_t id, const T &val) { ((T*)data)[id] = val; }
-	inline T   &get        (size_t id) const         { return ((T*)data)[id]; }
-	inline T   &operator[] (size_t id) const         { return ((T*)data)[id]; }
+	T          &last       () const                  { return data[count - 1]; }
+	inline void set        (size_t id, const T &val) { data[id] = val; }
+	inline T   &get        (size_t id) const         { return data[id]; }
+	inline T   &operator[] (size_t id) const         { return data[id]; }
 	void        reverse    ();
 	array_t<T>  copy       () const;
-	void        each       (void (*e)(T &))          { for (size_t i=0; i<count; i++) e(((T*)data)[i]); }
+	void        each       (void (*e)(T &))          { for (size_t i=0; i<count; i++) e(data[i]); }
 	void        free       ();
 	
 	//////////////////////////////////////
 	// Binary search methods
 
-	int64_t binary_search(const T &item);
+	int64_t binary_search(const T &item) const;
 
 	// Extra template parameters mean this needs completely defined right here
 	template <typename T, typename D>
-	int64_t binary_search(D T::*key, const D &item) {
-		array_view_t<D> view = array_view_create(*this, key);
+	int64_t binary_search(const D T::*key, const D &item) const {
+		array_view_t<D> view = array_view_t<D>{data, count, sizeof(T), (size_t)&((T*)nullptr->*key)};
 		int64_t l = 0, r = view.count - 1;
 		while (l <= r) {
 			int64_t mid = (l+r) / 2;
@@ -197,7 +197,7 @@ struct array_t {
 //////////////////////////////////////
 
 template <typename T>
-int64_t array_t<T>::binary_search(const T &item) {
+int64_t array_t<T>::binary_search(const T &item) const {
 	int64_t l = 0, r = count - 1;
 	while (l <= r) {
 		int64_t mid = (l+r) / 2;
@@ -219,7 +219,7 @@ void array_t<T>::resize(size_t to_capacity) {
 	void  *new_memory = ARRAY_MALLOC(sizeof(T) * to_capacity); 
 	memcpy(new_memory, old_memory, sizeof(T) * count);
 
-	data = new_memory;
+	data = (T*)new_memory;
 	ARRAY_FREE(old_memory);
 
 	capacity = to_capacity;
@@ -252,9 +252,7 @@ template <typename T>
 void array_t<T>::remove(size_t aAt) {
 	ARRAY_ASSERT(aAt < count);
 
-	int64_t  at  = aAt;
-	uint8_t *arr = (uint8_t*)data;
-	ARRAY_MEMMOVE(arr + at * sizeof(T), arr + (at + 1)*sizeof(T), (arr + count*sizeof(T)) - (arr + (at + 1)*sizeof(T)));
+	ARRAY_MEMMOVE(&data[aAt], &data[aAt+1], (count - (aAt + 1))*sizeof(T));
 	count -= 1;
 }
 
@@ -267,10 +265,8 @@ void array_t<T>::insert(size_t aAt, const T &item) {
 	if (count+1 > capacity) 
 		resize(capacity<1?1:capacity*2);
 
-	int64_t  at  = aAt;
-	uint8_t *arr = (uint8_t*)data;
-	ARRAY_MEMMOVE(arr + (at + 1)*sizeof(T), arr + at*sizeof(T), (arr + count*sizeof(T)) - (arr + at*sizeof(T)));
-	ARRAY_MEMCPY (arr + at * sizeof(T), &item, sizeof(T));
+	ARRAY_MEMMOVE(&data[aAt+1], &data[aAt], (count-aAt)*sizeof(T));
+	ARRAY_MEMCPY (&data[aAt], &item, sizeof(T));
 	count += 1;
 }
 
