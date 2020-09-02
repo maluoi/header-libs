@@ -148,7 +148,16 @@ struct array_t {
 	array_t<T>  copy       () const;
 	void        each       (void (*e)(T &))          { for (size_t i=0; i<count; i++) e(data[i]); }
 	void        free       ();
-	
+
+	//////////////////////////////////////
+	// Linear search methods
+
+	int64_t     index_of   (const T &item) const                                              { for (size_t i = 0; i < count; i++) if (memcmp(data[i], item, sizeof(T)) == 0) return i; return -1; }
+	template <typename T, typename D>
+	int64_t     index_of   (const D T::*key, const D &item) const                             { const size_t offset = (size_t)&((T*)0->*key); for (size_t i = 0; i < count; i++) if (memcmp(((uint8_t *)&data[i]) + offset, &item, sizeof(D)) == 0) return i; return -1; }
+	int64_t     index_where(bool (*c)(const T &item, void *user_data), void *user_data) const { for (size_t i=0; i<count; i++) if (c(data[i], user_data)) return i; return -1;}
+	int64_t     index_where(bool (*c)(const T &item)) const                                   { for (size_t i=0; i<count; i++) if (c(data[i]))            return i; return -1;}
+
 	//////////////////////////////////////
 	// Binary search methods
 
