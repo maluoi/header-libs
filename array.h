@@ -202,6 +202,53 @@ struct array_t {
 };
 
 //////////////////////////////////////
+// hashmap_t                        //
+//////////////////////////////////////
+
+template <typename K, typename T>
+struct hashmap_t {
+	array_t<uint64_t> hashes;
+	array_t<T>        items;
+
+	uint64_t _hash(const K &key) const {
+		uint64_t       hash  = 14695981039346656037UL;
+		const uint8_t *bytes = (const uint8_t *)&key;
+		for (size_t i=0; i<sizeof(K); i++)
+			hash = (hash ^ bytes[i]) * 1099511628211;
+		return hash;
+	}
+
+	int64_t add(const K &key, const T &value) {
+		uint64_t hash = _hash(key);
+		int64_t  id   = hashes.binary_search(hash);
+		if (id < 0) {
+			id = ~id;
+			hashes.insert(id, hash );
+			items .insert(id, value);
+		}
+		return id;
+	}
+	int64_t add_or_set(const K &key, const T &value) {
+		uint64_t hash = _hash(key);
+		int64_t  id   = hashes.binary_search(hash);
+		if (id < 0) {
+			id = ~id;
+			hashes.insert(id, hash );
+			items .insert(id, value);
+		} else {
+			hashes[id] = hash;
+			items [id] = value;
+		}
+		return id;
+	}
+
+	T       *get     (const K &key)                         const { int64_t id = hashes.binary_search(_hash(key)); return id<0 ? nullptr       : &items[id]; }
+	const T &get_or  (const K &key, const T &default_value) const { int64_t id = hashes.binary_search(_hash(key)); return id<0 ? default_value :  items[id]; }
+	int64_t  contains(const K &key)                         const { return hashes.binary_search(_hash(key)); }
+	void     free    ()                                           { hashes.free(); items.free(); }
+};
+
+//////////////////////////////////////
 // array_t methods                  //
 //////////////////////////////////////
 
